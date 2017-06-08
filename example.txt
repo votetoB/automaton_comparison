@@ -1,2 +1,2 @@
-asdfasdf
-asdfasdfas
+ab[ac]+d.aab{3,*}d*c
+ababab

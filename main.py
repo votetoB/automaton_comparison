@@ -6,7 +6,9 @@ if __name__ == '__main__':
         regexps = f.read().splitlines()
 
     a1 = Automaton.init_from_regex(regexps[0])
+    # print(a1)
     a2 = Automaton.init_from_regex(regexps[1])
+    # print(a2)
 
     if a1 == a2:
         print("Regexps %s %s are the same" % (regexps[0], regexps[1]))
