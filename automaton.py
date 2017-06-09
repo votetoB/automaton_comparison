@@ -4,6 +4,7 @@ from functools import partial, reduce
 
 
 ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
+ALPHABET = 'ab'
 
 
 class Automaton(object):
@@ -20,39 +21,70 @@ class Automaton(object):
         self.alphabet = alphabet
         self.final_states = final_states
 
-    def minimize(self):
-        equality_matrix = [[not ((state1 in self.final_states) ^ (state0 in self.final_states)) for state1 in
-                            self.states[self.states.index(state0) + 1:]] for state0 in self.states if
-                           self.states.index(state0) + 1 != len(self.states)]
+    def minimize(self, equality_comparison=None):
+        equality_matrix = [
+            [not ((state1 in self.final_states) ^ (state0 in self.final_states))
+             for state1 in self.states] for state0 in self.states]
 
         while True:
-            prev_equality_matrix = copy.copy(equality_matrix)
+            prev_equality_matrix = copy.deepcopy(equality_matrix)
+
             for state0 in self.states:
-                for state1 in self.states[self.states.index(state0) + 1:]:
-                    if equality_matrix[state0 - 1][state1 - 1 - state0]:
-                        equality_matrix[state0 - 1][state1 - 1 - state0] = list(map(partial(self.delta, state0),
-                                                                            self.alphabet))\
-                                                          == list(map(partial(self.delta, state1), self.alphabet))
+                for state1 in self.states:
+                    if equality_matrix[state0 - 1][state1 - 1]:
+                        def compare(letter):
+                            delta0 = self.delta(state0, letter)
+                            delta1 = self.delta(state1, letter)
+                            return delta0 == delta1 or (delta1 is not None and delta0 is not None and equality_matrix[delta0 - 1][delta1 - 1])
+
+                        equality_matrix[state0 - 1][state1 - 1] = all(map(compare, self.alphabet))
+
 
             if prev_equality_matrix == equality_matrix:
                 break
+        if equality_comparison:
+            # If we need to compare to specific states
+            return equality_matrix[equality_comparison[0]][equality_comparison[1]]
+        else:
+            states_to_remove = set()
 
-        states_to_remove = set()
-        for state0 in self.states:
-            for state1 in self.states[self.states.index(state0) + 1:]:
-                if equality_matrix[state0 - 1][state1 - 1 - state0]:
-                    states_to_remove.add(state1)
+            for state0 in self.states:
+                for state1 in self.states:
+                    if equality_matrix[state0 - 1][state1 - 1] and state0 < state1:
+                        states_to_remove.add(state0)
 
-        map(self.remove_state, states_to_remove)
+            map(self.remove_state, states_to_remove)
 
     def __eq__(self, other):
         if not type(other) == Automaton:
             warn("Comparing Automaton to non-automaton")
             return False
 
-        self.minimize()
-        other.minimize()
+        if self.alphabet != other.alphabet:
+            return False
 
+        merged_automaton = Automaton.merge_two(self, other)
+
+        return merged_automaton.minimize(equality_comparison=[1, len(self.states) + 1])
+
+    @classmethod
+    def merge_two(cls, left, right):
+        ll = len(left.states)
+        new_states = left.states + [s + ll for s in right.states]
+        new_final_states = left.final_states + [s + ll for s in right.final_states]
+        assert left.alphabet == right.alphabet
+        new_matrix = dict.fromkeys(new_states)
+        for k, v in left.matrix.iteritems():
+            new_matrix[k] = v
+
+        for k, v in right.matrix.iteritems():
+            new_v = dict.fromkeys(right.alphabet)
+            for letter, ns in v.iteritems():
+                new_v[letter] = ns + ll if ns else None
+
+            new_matrix[k + ll] = new_v
+
+        return cls(states=new_states, matrix=new_matrix, final_states=new_final_states, alphabet=left.alphabet)
 
     @classmethod
     def init_from_regex(cls, regex):
@@ -78,7 +110,6 @@ class Automaton(object):
         # else:
         #     obligatory_finish = False
 
-
         i = 0
         while i < len(regex):
             el = regex[i]
@@ -102,7 +133,7 @@ class Automaton(object):
                 elements.append((options, 'optional_character'))
 
             elif el == '+':
-                elements.append((1, 'inf','quantifier'))
+                elements.append((1, 'inf', 'quantifier'))
             elif el == '*':
                 elements.append((0, 'inf', 'quantifier'))
             elif el == '!':
@@ -152,9 +183,11 @@ class Automaton(object):
             raise TypeError("You have to pass proper state and/or element")
 
     def remove_state(self, state):
-        self.states.remove(state)
-        self.final_states.remove(state)
-        del self.matrix[state]
+        raise NotImplementedError
+        # self.states.remove(state)
+        # if state in self.final_states:
+        #     self.final_states.remove(state)
+        # del self.matrix[state]
 
     @classmethod
     def one_letter_automaton(cls, letters):
@@ -173,7 +206,7 @@ class Automaton(object):
         )
 
     def quantify(self, quantifier):
-        assert self.states == [1,2]
+        assert self.states == [1, 2]
         # print(quantifier)
         if quantifier[1] == 'inf':
             self.states = list(range(1, quantifier[0] + 2))
@@ -240,4 +273,3 @@ class Automaton(object):
             "AUTOMATON:\n" +
             str(self.states) +
             str(self.final_states) + '\n' + str(self.matrix))
-
